@@ -1,0 +1,40 @@
+name: Actualizar históricos XM (precio de bolsa y curva de oferta)
+
+on:
+  schedule:
+    # Todos los lunes a las 06:00 UTC (01:00 am hora Colombia)
+    - cron: '0 6 * * 1'
+  workflow_dispatch: {}   # permite lanzarlo a mano desde la pestaña "Actions" en GitHub
+
+permissions:
+  contents: write   # necesario para que el job pueda subir los archivos actualizados
+
+jobs:
+  actualizar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el repositorio
+        uses: actions/checkout@v4
+
+      - name: Preparar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar dependencias
+        run: pip install requests
+
+      - name: Traer y fusionar el histórico de Precio de Bolsa Nacional
+        run: python fetch_precio_bolsa.py
+
+      - name: Traer y fusionar la curva de oferta (experimental)
+        run: python fetch_curva_oferta.py
+        continue-on-error: true   # si no logra identificar las métricas, no debe tumbar el job de precios
+
+      - name: Subir los archivos si cambiaron
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/precio_bolsa_historico.json data/curva_oferta_historico.json
+          git diff --staged --quiet || git commit -m "Actualización semanal de históricos XM"
+          git push
