@@ -67,14 +67,40 @@ def fetch_catalog():
 def find_metric(catalog, keywords, exclude, entity_wanted="Recurso"):
     candidates = []
     for row in catalog:
-        entity = row.get("Entity", "")
+        # Los datos reales de cada métrica vienen anidados bajo "Values"
+        # (así los devuelve la API de XM); si no está anidado, se usa la
+        # fila tal cual, por si el formato cambia en el futuro.
+        fields = row.get("Values", row) if isinstance(row, dict) else row
+        if not isinstance(fields, dict):
+            continue
+        entity = fields.get("Entity", "")
         if entity != entity_wanted:
             continue
-        name_fields = " ".join(str(v) for v in row.values())
+        name_fields = " ".join(str(v) for v in fields.values())
         norm = normalize(name_fields)
         if all(k in norm for k in keywords) and not any(e in norm for e in exclude):
-            candidates.append(row)
+            candidates.append(fields)
     return candidates
+
+
+def debug_catalog(catalog):
+    """Imprime un resumen del catálogo para poder diagnosticar a ojo si la
+    búsqueda automática no encuentra nada."""
+    entities = {}
+    sample_recurso = []
+    for row in catalog:
+        fields = row.get("Values", row) if isinstance(row, dict) else row
+        if not isinstance(fields, dict):
+            continue
+        ent = fields.get("Entity", "?")
+        entities[ent] = entities.get(ent, 0) + 1
+        if ent == "Recurso" and len(sample_recurso) < 15:
+            sample_recurso.append(fields.get("MetricId", "?") + " | " + str(fields.get("MetricName", fields)))
+    print(f"Total de métricas en el catálogo: {len(catalog)}")
+    print("Conteo por tipo de Entity:", entities)
+    print("Ejemplos de métricas con Entity='Recurso' (primeras 15):")
+    for s in sample_recurso:
+        print("  ", s)
 
 
 def chunk_dates(start, end, max_days):
@@ -158,6 +184,7 @@ def load_existing():
 def main():
     print("Buscando en el catálogo de XM las métricas de precio y cantidad por recurso...")
     catalog = fetch_catalog()
+    debug_catalog(catalog)
     price_candidates = find_metric(catalog, PRICE_KEYWORDS, PRICE_EXCLUDE)
     qty_candidates = find_metric(catalog, QTY_KEYWORDS, QTY_EXCLUDE)
 
